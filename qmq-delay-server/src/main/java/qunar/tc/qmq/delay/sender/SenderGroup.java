@@ -16,6 +16,19 @@
 
 package qunar.tc.qmq.delay.sender;
 
+import static qunar.tc.qmq.delay.monitor.QMon.delayBrokerSendMsgCount;
+import static qunar.tc.qmq.delay.monitor.QMon.delayTime;
+
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
+
 import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.RateLimiter;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
@@ -34,15 +47,6 @@ import qunar.tc.qmq.protocol.Datagram;
 import qunar.tc.qmq.protocol.QMQSerializer;
 import qunar.tc.qmq.protocol.producer.MessageProducerCode;
 import qunar.tc.qmq.protocol.producer.SendResult;
-
-import java.util.*;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
-
-import static qunar.tc.qmq.delay.monitor.QMon.delayBrokerSendMsgCount;
-import static qunar.tc.qmq.delay.monitor.QMon.delayTime;
 
 /**
  * @author xufeng.deng dennisdxf@gmail.com
@@ -84,8 +88,8 @@ public class SenderGroup implements Disposable {
             List<ScheduleSetRecord> records = store.recoverLogRecord(list);
             QMon.loadMsgTime(System.currentTimeMillis() - start);
 
-            Datagram response = sendMessages(records, sender);
-            release(records);
+            Datagram response = sendMessages(records, sender);//报错情况下 sendResponse肯定为空。
+            release(records);//释放
             monitor(list, groupName);
             if (response == null) {
                 handler.fail(list);

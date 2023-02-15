@@ -16,12 +16,12 @@
 
 package qunar.tc.qmq.utils;
 
+import java.util.List;
+
 import com.google.common.base.Joiner;
 import com.google.common.base.Optional;
 import com.google.common.base.Splitter;
 import com.google.common.base.Strings;
-
-import java.util.List;
 
 /**
  * @author keli.wang
@@ -34,6 +34,17 @@ public final class RetrySubjectUtils {
     private static final String DEAD_RETRY_SUBJECT_PREFIX = "%DEAD_RETRY";
 
     private RetrySubjectUtils() {
+    }
+
+
+    /**
+     *  retry标识21，subject+2*group小于234;
+     * @param subject
+     * @param group
+     * @return
+     */
+    public static boolean checkSubjectGroup(final String subject, final String group) {
+        return subject.length() + group.length() * 2 + RETRY_SUBJECT_PREFIX.length() + DEAD_RETRY_SUBJECT_PREFIX.length() + 4 < 255;
     }
 
     public static boolean isRealSubject(final String subject) {

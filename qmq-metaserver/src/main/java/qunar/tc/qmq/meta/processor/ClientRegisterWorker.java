@@ -21,13 +21,17 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import qunar.tc.qmq.base.ClientRequestType;
 import qunar.tc.qmq.base.OnOfflineState;
+import qunar.tc.qmq.common.ClientType;
 import qunar.tc.qmq.concurrent.ActorSystem;
 import qunar.tc.qmq.meta.BrokerCluster;
 import qunar.tc.qmq.meta.BrokerGroup;
 import qunar.tc.qmq.meta.BrokerState;
 import qunar.tc.qmq.meta.cache.CachedOfflineStateManager;
+import qunar.tc.qmq.meta.monitor.QMon;
 import qunar.tc.qmq.meta.route.ReadonlyBrokerGroupManager;
 import qunar.tc.qmq.meta.route.SubjectRouter;
+import qunar.tc.qmq.meta.spi.ClientRegisterAuthFactory;
+import qunar.tc.qmq.meta.spi.pojo.ClientRegisterAuthInfo;
 import qunar.tc.qmq.meta.store.Store;
 import qunar.tc.qmq.meta.utils.ClientLogUtils;
 import qunar.tc.qmq.protocol.CommandCode;
@@ -39,6 +43,7 @@ import qunar.tc.qmq.protocol.consumer.MetaInfoResponse;
 import qunar.tc.qmq.util.RemotingBuilder;
 import qunar.tc.qmq.utils.PayloadHolderUtils;
 import qunar.tc.qmq.utils.RetrySubjectUtils;
+import qunar.tc.qmq.utils.SubjectUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -48,7 +53,7 @@ import java.util.List;
  * @since 2017/9/1
  */
 class ClientRegisterWorker implements ActorSystem.Processor<ClientRegisterProcessor.ClientRegisterMessage> {
-    private static final Logger LOG = LoggerFactory.getLogger(ClientRegisterProcessor.class);
+    private static final Logger LOG = LoggerFactory.getLogger(ClientRegisterWorker.class);
 
     private final SubjectRouter subjectRouter;
     private final ActorSystem actorSystem;
@@ -71,17 +76,44 @@ class ClientRegisterWorker implements ActorSystem.Processor<ClientRegisterProces
     @Override
     public boolean process(ClientRegisterProcessor.ClientRegisterMessage message, ActorSystem.Actor<ClientRegisterProcessor.ClientRegisterMessage> self) {
         final MetaInfoRequest request = message.getMetaInfoRequest();
-
+        if (!preCheck(message, request)) {
+            return true;
+        }
         final MetaInfoResponse response = handleClientRegister(request);
         writeResponse(message, response);
         return true;
     }
 
+    private boolean preCheck(ClientRegisterProcessor.ClientRegisterMessage message,final MetaInfoRequest request) {
+        if(!PreCheckFactory.check(request)){
+            MetaInfoResponse response = null;
+            RemotingHeader header = message.getHeader();
+            MetaInfoResponsePayloadHolder payloadHolder = new MetaInfoResponsePayloadHolder(response);
+            Datagram datagram = RemotingBuilder.buildResponseDatagram(CommandCode.SUCCESS, header, payloadHolder);
+            message.getCtx().writeAndFlush(datagram);
+        }
+        return false;
+    }
     private MetaInfoResponse handleClientRegister(final MetaInfoRequest request) {
         final String realSubject = RetrySubjectUtils.getRealSubject(request.getSubject());
+        if (SubjectUtils.isInValid(realSubject)) {
+            return buildResponse(request, -2, OnOfflineState.OFFLINE, new BrokerCluster(new ArrayList<>()));
+        }
         final int clientRequestType = request.getRequestType();
 
         try {
+            ClientRegisterAuthInfo authInfo = new ClientRegisterAuthInfo();
+            authInfo.setAppCode(request.getAppCode());
+            authInfo.setSubject(request.getSubject());
+            authInfo.setConsumerGroup(request.getConsumerGroup());
+            authInfo.setClientId(request.getClientId());
+            authInfo.setClientType(ClientType.of(request.getClientTypeCode()));
+
+            if (!ClientRegisterAuthFactory.auth(authInfo)) {
+                QMon.clientRegisterAuthFailCountInc(realSubject, authInfo.getConsumerGroup(), authInfo.getClientType().name());
+                return buildResponse(request, -2, OnOfflineState.OFFLINE, new BrokerCluster(new ArrayList<>()));
+            }
+
             if (ClientRequestType.ONLINE.getCode() == clientRequestType) {
                 store.insertClientMetaInfo(request);
             }

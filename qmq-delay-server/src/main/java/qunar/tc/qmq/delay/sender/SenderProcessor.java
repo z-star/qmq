@@ -16,6 +16,10 @@
 
 package qunar.tc.qmq.delay.sender;
 
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
+
 import com.google.common.collect.Sets;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,10 +33,6 @@ import qunar.tc.qmq.delay.ScheduleIndex;
 import qunar.tc.qmq.delay.meta.BrokerRoleManager;
 import qunar.tc.qmq.delay.store.model.DispatchLogRecord;
 import qunar.tc.qmq.delay.store.model.ScheduleSetRecord;
-
-import java.util.List;
-import java.util.Set;
-import java.util.concurrent.TimeUnit;
 
 /**
  * @author xufeng.deng dennisdxf@gmail.com
@@ -73,6 +73,8 @@ public class SenderProcessor implements DelayProcessor, Processor<ScheduleIndex>
         this.batchExecutor.init();
     }
 
+    //这里目前看之后fail之后使用到。这个send和group的send不一样。group send知己发送一个nettysender了
+    //这里是堆积到一个堆离去。然后慢慢发。
     @Override
     public void send(ScheduleIndex index) {
         if (!BrokerRoleManager.isDelayMaster()) {
@@ -131,10 +133,10 @@ public class SenderProcessor implements DelayProcessor, Processor<ScheduleIndex>
             return;
         }
 
-        final Set<String> refreshSubject = Sets.newHashSet();
+        final Set<String> refreshSubject = Sets.newHashSet(); //每一堆schedule记录刷新一次
         for (ScheduleIndex index : indexList) {
-            refresh(index, refreshSubject);
-            send(index);
+            refresh(index, refreshSubject);//刷新broker的地址。
+            send(index);//再次发送
         }
     }
 
@@ -153,7 +155,7 @@ public class SenderProcessor implements DelayProcessor, Processor<ScheduleIndex>
 
     @Override
     public void fail(List<ScheduleIndex> indexList) {
-        retry(indexList);
+        retry(indexList);//发送失败后的重试处理
     }
 
     @Override
