@@ -15,10 +15,6 @@
  */
 package qunar.tc.qmq.delay.wheel;
 
-import io.netty.util.internal.PlatformDependent;
-import io.netty.util.internal.StringUtil;
-import qunar.tc.qmq.delay.ScheduleIndex;
-
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Queue;
@@ -27,6 +23,10 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
+
+import io.netty.util.internal.PlatformDependent;
+import io.netty.util.internal.StringUtil;
+import qunar.tc.qmq.delay.ScheduleIndex;
 
 @SuppressWarnings("all")
 public class HashedWheelTimer {
@@ -262,7 +262,6 @@ public class HashedWheelTimer {
                         return currentTime;
                     }
                 }
-
                 // Check if we run on windows, as if thats the case we will need
                 // to round the sleepTime as workaround for a bug that only affect
                 // the JVM if it runs on windows.

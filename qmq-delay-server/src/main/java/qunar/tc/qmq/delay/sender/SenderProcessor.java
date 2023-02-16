@@ -16,6 +16,10 @@
 
 package qunar.tc.qmq.delay.sender;
 
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
+
 import com.google.common.collect.Sets;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,10 +33,6 @@ import qunar.tc.qmq.delay.ScheduleIndex;
 import qunar.tc.qmq.delay.meta.BrokerRoleManager;
 import qunar.tc.qmq.delay.store.model.DispatchLogRecord;
 import qunar.tc.qmq.delay.store.model.ScheduleSetRecord;
-
-import java.util.List;
-import java.util.Set;
-import java.util.concurrent.TimeUnit;
 
 /**
  * @author xufeng.deng dennisdxf@gmail.com
@@ -95,10 +95,37 @@ public class SenderProcessor implements DelayProcessor, Processor<ScheduleIndex>
         }
     }
 
+
+    public void send(ScheduleIndex index,int retryCount) {
+        if (!BrokerRoleManager.isDelayMaster()) {
+            return;
+        }
+        if(retryCount==0){
+            LOGGER.error("send message failed retryCount is over,subject:{} offset:{},time:{},sequence:{}", index.getSubject(), index.getOffset(), index.getScheduleTime(), index.getSequence());
+            return;
+        }
+        boolean add;
+        try {
+            long waitTime = Math.abs(sendWaitTime);
+            if (waitTime > 0) {
+                add = batchExecutor.addItem(index, waitTime, TimeUnit.MILLISECONDS);
+            } else {
+                add = batchExecutor.addItem(index);
+            }
+        } catch (InterruptedException e) {
+            return;
+        }
+        if (!add) {
+            retryCount--;
+            send(index,retryCount);
+        }
+    }
+
     @Override
     public void process(List<ScheduleIndex> indexList) {
         try {
             senderExecutor.execute(indexList, this, brokerService);
+            //这里是发送入口
         } catch (Exception e) {
             LOGGER.error("send message failed,messageSize:{} will retry", indexList.size(), e);
             retry(indexList);
@@ -138,6 +165,18 @@ public class SenderProcessor implements DelayProcessor, Processor<ScheduleIndex>
         }
     }
 
+    private void retry(List<ScheduleIndex> indexList,int retryCount) {
+        if (null == indexList || indexList.isEmpty()) {
+            return;
+        }
+
+        final Set<String> refreshSubject = Sets.newHashSet();
+        for (ScheduleIndex index : indexList) {
+            refresh(index, refreshSubject);
+            send(index);
+        }
+    }
+
     private void refresh(ScheduleIndex index, Set<String> refreshSubject) {
         boolean refresh = !refreshSubject.contains(index.getSubject());
         if (refresh) {
@@ -153,7 +192,7 @@ public class SenderProcessor implements DelayProcessor, Processor<ScheduleIndex>
 
     @Override
     public void fail(List<ScheduleIndex> indexList) {
-        retry(indexList);
+        retry(indexList, 10);
     }
 
     @Override
